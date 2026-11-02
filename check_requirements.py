@@ -1,6 +1,7 @@
 """Check every pinned line of a requirements file against PyPI for Python 3.11.
 
 Usage: python check_requirements.py [requirements.txt | -]   ("-" reads from stdin)
+With no argument, the built-in DEFAULT_REQUIREMENTS list is checked.
 The target Python version is fixed (3.11), independent of the interpreter running this.
 """
 
@@ -23,6 +24,17 @@ TARGET_CANDIDATES = [Version(f"{TARGET_PYTHON}.{patch}") for patch in range(100)
 PYPI = "https://pypi.org/pypi"
 HTTP_NOT_FOUND = 404
 LOWER_BOUND_OPERATORS = {">=", ">", "==", "~=", "==="}
+
+DEFAULT_REQUIREMENTS = """\
+django==4.2
+numpy==2.3.0
+scipy==1.7.0
+scikit-learn==1.4.0
+fastapi-agent-router==0.3.1
+maxplotlib==3.99.0
+six==1.16.0
+requests==2.32.0
+"""
 
 OK = "ok"
 NOT_FOUND = "not found"
@@ -117,16 +129,28 @@ def check_line(line: str) -> Result:
     return Result(OK, f"{line} (unpinned, version not checked)")
 
 
-def read_lines(path: str) -> list[str]:
+def read_lines(path: str | None) -> list[str]:
     """Read requirement lines, dropping blanks, comments and pip options."""
-    raw = sys.stdin.read() if path == "-" else Path(path).read_text(encoding="utf-8")
+    if path is None:
+        raw = DEFAULT_REQUIREMENTS
+    elif path == "-":
+        raw = sys.stdin.read()
+    else:
+        raw = Path(path).read_text(encoding="utf-8")
     stripped = (line.split("#", 1)[0].strip() for line in raw.splitlines())
     return [line for line in stripped if line and not line.startswith("-")]
 
 
-def main(path: str) -> None:
-    """Check every requirement in ``path`` and print the summary."""
-    lines = read_lines(path)
+def main(path: str | None) -> None:
+    """Check every requirement in ``path`` (or the built-in list) and print the summary."""
+    try:
+        lines = read_lines(path)
+    except FileNotFoundError:
+        sys.exit(
+            f"File not found: {path}\n"
+            "Usage: python check_requirements.py <requirements file>  "
+            "(or pipe the list in and pass '-')"
+        )
     results = [check_line(line) for line in lines]
     for result in results:
         print(f"  [{result.status}] {result.detail}")
@@ -151,5 +175,4 @@ def main(path: str) -> None:
 
 
 if __name__ == "__main__":
-    path = sys.argv[1] if len(sys.argv) > 1 else "requirements.txt"
-    main(path)
+    main(sys.argv[1] if len(sys.argv) > 1 else None)
